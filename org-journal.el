@@ -2,6 +2,7 @@
 
 ;; Author: Bastian Bechtold
 ;; URL: http://github.com/bastibe/org-journal
+;; Package-Version: 20181115.714
 ;; Version: 1.15.0
 ;; Package-Requires: ((emacs "25.1"))
 
@@ -120,6 +121,16 @@ org-journal. Use org-journal-file-format instead.")
   "Face for highlighting future org-journal entries in M-x calendar."
   :group 'org-journal)
 
+(defun replace-in-string (what with in)
+  "Replace something in a string"
+  (replace-regexp-in-string (regexp-quote what) with in nil 'literal))
+
+(defun get-string-from-file (filePath)
+  "Return filePath's file content."
+  (with-temp-buffer
+    (insert-file-contents filePath)
+    (buffer-string)))
+
 (defcustom org-journal-dir "~/Documents/journal/"
   "Directory containing journal entries. Setting this will update the
   internal `org-journal-file-pattern` to a regex that matches the
@@ -160,6 +171,12 @@ org-journal. Use org-journal-file-format instead.")
   DATE is what Emacs thinks is an appropriate way to format days
   in your language. If you define it as a function, it is evaluated
   and inserted."
+  :type 'string :group 'org-journal)
+
+(defcustom org-journal-base-file (concat (file-name-directory load-file-name) "journal_base.org")
+  "file location of a base file to start all your org-journal
+   files with. Use the XXdateXX to insert the date in the format
+   as set by org-journal-date-format."
   :type 'string :group 'org-journal)
 
 (defcustom org-journal-date-prefix "* "
@@ -328,7 +345,10 @@ Whenever a journal entry is created the
         ;; empty file? Add a date timestamp
         (when new-file-p
           (if (functionp org-journal-date-format)
-              (insert (funcall org-journal-date-format time))
+              (insert "" (replace-in-string
+                          "XXdateXX"
+                          (format-time-string org-journal-date-format time)
+                          (get-string-from-file org-journal-base-file)))
               (insert org-journal-date-prefix
                       (format-time-string org-journal-date-format time))))
 
@@ -408,8 +428,8 @@ previous day's file to the current file."
                      (outline-next-heading)
                      (point)))
          (subtree (buffer-substring-no-properties start end)))
-    (when delete-p
-      (delete-region start end))
+    ; (when delete-p
+    ;   (delete-region start end))
     subtree))
 
 (defun org-journal-time-entry-level ()
