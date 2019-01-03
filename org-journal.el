@@ -179,6 +179,11 @@ org-journal. Use org-journal-file-format instead.")
    as set by org-journal-date-format."
   :type 'string :group 'org-journal)
 
+(defcustom org-journal-carryover-delete t
+  "Should we delete our todos from the previous file when we
+   carryover."
+  :type 'string :group 'org-journal)
+
 (defcustom org-journal-date-prefix "* "
   "String that is put before every date at the top of a journal
   file. By default, this is a org-mode heading. Another good idea
@@ -345,11 +350,12 @@ Whenever a journal entry is created the
         ;; empty file? Add a date timestamp
         (when new-file-p
           (if (functionp org-journal-date-format)
-              (insert "" (replace-in-string
-                          "XXdateXX"
-                          (format-time-string org-journal-date-format time)
-                          (get-string-from-file org-journal-base-file)))
-              (insert org-journal-date-prefix
+              (insert "")
+              (insert (replace-in-string 
+                          "XXdateXX" 
+                          (format-time-string org-journal-date-format time) 
+                          (get-string-from-file org-journal-base-file))
+                      org-journal-date-prefix
                       (format-time-string org-journal-date-format time))))
 
         ;; add crypt tag if encryption is enabled and tag is not present
@@ -428,8 +434,9 @@ previous day's file to the current file."
                      (outline-next-heading)
                      (point)))
          (subtree (buffer-substring-no-properties start end)))
-    ; (when delete-p
-    ;   (delete-region start end))
+    (if org-journal-carryover-delete
+        (when delete-p
+          (delete-region start end)))
     subtree))
 
 (defun org-journal-time-entry-level ()
