@@ -2,6 +2,7 @@
 
 ;; Author: Bastian Bechtold
 ;; URL: http://github.com/bastibe/org-journal
+;; Package-Version: 20181115.714
 ;; Version: 1.15.0
 ;; Package-Requires: ((emacs "25.1"))
 
@@ -93,6 +94,85 @@ org-journal. Use org-journal-file-format instead.")
       "%Y" "\\\\(?1:[0-9]\\\\{4\\\\}\\\\)" format)))
    "\\'"))
 
+(defun unflatten (xs &optional fn-value fn-level)
+  "Unflatten a list XS into a tree, e.g. (1 2 3 1) => (1 (2 (3)) 1).
+FN-VALUE specifies how to extract the values from each element, which
+are included in the output tree, FN-LEVEL tells how to extract the
+level of each element. By default these are the `identity' function so
+it will work on a list of numbers."
+  (let* ((level 1)
+         (tree (cons nil nil))
+         (start tree)
+         (stack nil)
+         (fn-value (or fn-value #'identity))
+         (fn-level (or fn-level #'identity)))
+    (dolist (x xs)
+      (let ((x-value (funcall fn-value x))
+            (x-level (funcall fn-level x)))
+        (cond ((> x-level level)
+               (setcdr tree (cons (cons x-value nil) nil))
+               (setq tree (cdr tree))
+               (push tree stack)
+               (setq tree (car tree))
+               (setq level x-level))
+              ((= x-level level)
+               (setcdr tree (cons x-value nil))
+               (setq tree (cdr tree)))
+              ((< x-level level)
+               (while (< x-level level)
+                 (setq tree (pop stack))
+                 (setq level (- level 1)))
+               (setcdr tree (cons x-value nil))
+               (setq tree (cdr tree))
+               (setq level x-level)))))
+      (cdr start)))
+
+; eg (unflatten '(1 2 3 2 3 4)) => '(1 (2 (3) 2 (3 (4))))
+
+(defun org-get-line-end (pos)
+  "get the start and stops of a line from a position"
+  (save-excursion
+    (goto-char pos)
+    (let* (
+      (start (line-beginning-position))
+      (end (line-end-position)))
+    end)))
+
+(defun org-get-header-list (&optional buffer) 
+  "Get the headers of an org buffer as a flat list of headers and levels.
+Buffer will default to the current buffer."
+  (interactive)
+  (with-current-buffer (or buffer (current-buffer))
+    (let ((tree (org-element-parse-buffer 'headline)))
+      (org-element-map 
+          tree 
+          'headline
+        (lambda (el) (list 
+                  ; get header title without tags etc
+
+                 (let* ((point (org-element-property :begin el))
+                        (end (org-get-line-end point))
+                        (subtree (buffer-substring-no-properties point end)))
+                 subtree)
+                 (org-element-property :level el) ; get depth
+                 ;; >> could add other properties here
+                 ))))))
+
+; eg (org-get-header-list) => (("pok" 1) ("lkm" 1) (("cedar" 2) ("yr" 2)) ("kjn" 1))
+
+
+(defun org-get-header-tree (&optional buffer)
+  "Get the headers of the given org buffer as a tree."
+  (interactive)
+  (let* ((headers (org-get-header-list buffer))
+         (header-tree (unflatten headers  
+                 (lambda (hl) (car hl))  ; extract information to include in tree
+                 (lambda (hl) (cadr hl)))))  ; extract item level
+    header-tree))
+
+; eg (org-get-header-tree) => ("pok" "lkm" ("cedar" "yr") "kjn")
+
+
 ; Customizable variables
 (defgroup org-journal nil
   "Settings for the personal journal"
@@ -119,6 +199,16 @@ org-journal. Use org-journal-file-format instead.")
   '((t (:foreground "#600000" :slant italic)))
   "Face for highlighting future org-journal entries in M-x calendar."
   :group 'org-journal)
+
+(defun replace-in-string (what with in)
+  "Replace something in a string"
+  (replace-regexp-in-string (regexp-quote what) with in nil 'literal))
+
+(defun get-string-from-file (filePath)
+  "Return filePath's file content."
+  (with-temp-buffer
+    (insert-file-contents filePath)
+    (buffer-string)))
 
 (defcustom org-journal-dir "~/Documents/journal/"
   "Directory containing journal entries. Setting this will update the
@@ -160,6 +250,17 @@ org-journal. Use org-journal-file-format instead.")
   DATE is what Emacs thinks is an appropriate way to format days
   in your language. If you define it as a function, it is evaluated
   and inserted."
+  :type 'string :group 'org-journal)
+
+(defcustom org-journal-base-file (concat (file-name-directory load-file-name) "journal_base.org")
+  "file location of a base file to start all your org-journal
+   files with. Use the XXdateXX to insert the date in the format
+   as set by org-journal-date-format."
+  :type 'string :group 'org-journal)
+
+(defcustom org-journal-carryover-delete t
+  "Should we delete our todos from the previous file when we
+   carryover."
   :type 'string :group 'org-journal)
 
 (defcustom org-journal-date-prefix "* "
@@ -328,9 +429,14 @@ Whenever a journal entry is created the
         ;; empty file? Add a date timestamp
         (when new-file-p
           (if (functionp org-journal-date-format)
-              (insert (funcall org-journal-date-format time))
-              (insert org-journal-date-prefix
+              (insert "")
+              (insert (replace-in-string 
+                          "XXdateXX" 
+                          (format-time-string org-journal-date-format time) 
+                          (get-string-from-file org-journal-base-file))
+                      org-journal-date-prefix
                       (format-time-string org-journal-date-format time))))
+
 
         ;; add crypt tag if encryption is enabled and tag is not present
         (when org-journal-enable-encryption
@@ -377,13 +483,26 @@ Whenever a journal entry is created the
   "Moves all items matching org-journal-carryover-items from the
 previous day's file to the current file."
   (interactive)
+  (save-excursion
+    (org-journal-open-previous-entry)
+    ; (prin1 "TEST")
+    ; (prin1 (buffer-name))
+    (prin1 (org-get-header-tree))
+    ; ("MYTEST"
+    ;      ("TESTING i'm not sure??")
+    ;  "TEST3"
+    ;      ("sssss")
+    ;  "TESET4 HELLOSSSSSS"
+    ;      ("sssssxx"
+    ;          ("noen sssssxx")))
+  )
   (let ((current-buffer-name (buffer-name))
         (all-todos))
     (save-excursion
       (let ((org-journal-find-file 'find-file)
             (delete-mapper
              (lambda ()
-               (let ((subtree (org-journal-extract-current-subtree t)))
+               (let ((subtree (org-journal-extract-current-subtree org-journal-carryover-delete)))
                  ;; since the next subtree now starts at point,
                  ;; continue mapping from before that, to include it
                  ;; in the search
@@ -402,14 +521,17 @@ previous day's file to the current file."
 
 (defun org-journal-extract-current-subtree (delete-p)
   "Get the string content of the entire current subtree."
+
   (let* ((start (progn (beginning-of-line)
                        (point)))
          (end (progn (org-end-of-subtree)
                      (outline-next-heading)
                      (point)))
          (subtree (buffer-substring-no-properties start end)))
+
     (when delete-p
-      (delete-region start end))
+           (delete-region start end))
+
     subtree))
 
 (defun org-journal-time-entry-level ()

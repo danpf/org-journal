@@ -1,0 +1,4 @@
+#+TITLE: XXdateXX
+#+SEQ_TODO: TODO(t) WAITING(w) | DONE(d) CANCELLED(c)
+#+LATEX_HEADER: \usepackage[margin=0.5in]{geometry}
+
