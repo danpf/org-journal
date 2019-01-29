@@ -94,84 +94,6 @@ org-journal. Use org-journal-file-format instead.")
       "%Y" "\\\\(?1:[0-9]\\\\{4\\\\}\\\\)" format)))
    "\\'"))
 
-(defun unflatten (xs &optional fn-value fn-level)
-  "Unflatten a list XS into a tree, e.g. (1 2 3 1) => (1 (2 (3)) 1).
-FN-VALUE specifies how to extract the values from each element, which
-are included in the output tree, FN-LEVEL tells how to extract the
-level of each element. By default these are the `identity' function so
-it will work on a list of numbers."
-  (let* ((level 1)
-         (tree (cons nil nil))
-         (start tree)
-         (stack nil)
-         (fn-value (or fn-value #'identity))
-         (fn-level (or fn-level #'identity)))
-    (dolist (x xs)
-      (let ((x-value (funcall fn-value x))
-            (x-level (funcall fn-level x)))
-        (cond ((> x-level level)
-               (setcdr tree (cons (cons x-value nil) nil))
-               (setq tree (cdr tree))
-               (push tree stack)
-               (setq tree (car tree))
-               (setq level x-level))
-              ((= x-level level)
-               (setcdr tree (cons x-value nil))
-               (setq tree (cdr tree)))
-              ((< x-level level)
-               (while (< x-level level)
-                 (setq tree (pop stack))
-                 (setq level (- level 1)))
-               (setcdr tree (cons x-value nil))
-               (setq tree (cdr tree))
-               (setq level x-level)))))
-      (cdr start)))
-
-; eg (unflatten '(1 2 3 2 3 4)) => '(1 (2 (3) 2 (3 (4))))
-
-(defun org-get-line-end (pos)
-  "get the start and stops of a line from a position"
-  (save-excursion
-    (goto-char pos)
-    (let* (
-      (start (line-beginning-position))
-      (end (line-end-position)))
-    end)))
-
-(defun org-get-header-list (&optional buffer) 
-  "Get the headers of an org buffer as a flat list of headers and levels.
-Buffer will default to the current buffer."
-  (interactive)
-  (with-current-buffer (or buffer (current-buffer))
-    (let ((tree (org-element-parse-buffer 'headline)))
-      (org-element-map 
-          tree 
-          'headline
-        (lambda (el) (list 
-                  ; get header title without tags etc
-
-                 (let* ((point (org-element-property :begin el))
-                        (end (org-get-line-end point))
-                        (subtree (buffer-substring-no-properties point end)))
-                 subtree)
-                 (org-element-property :level el) ; get depth
-                 ;; >> could add other properties here
-                 ))))))
-
-; eg (org-get-header-list) => (("pok" 1) ("lkm" 1) (("cedar" 2) ("yr" 2)) ("kjn" 1))
-
-
-(defun org-get-header-tree (&optional buffer)
-  "Get the headers of the given org buffer as a tree."
-  (interactive)
-  (let* ((headers (org-get-header-list buffer))
-         (header-tree (unflatten headers  
-                 (lambda (hl) (car hl))  ; extract information to include in tree
-                 (lambda (hl) (cadr hl)))))  ; extract item level
-    header-tree))
-
-; eg (org-get-header-tree) => ("pok" "lkm" ("cedar" "yr") "kjn")
-
 
 ; Customizable variables
 (defgroup org-journal nil
@@ -258,6 +180,12 @@ Buffer will default to the current buffer."
    as set by org-journal-date-format."
   :type 'string :group 'org-journal)
 
+(defcustom org-journal-python-file (concat (file-name-directory load-file-name) "org_journal.py")
+  "file location of a base file to start all your org-journal
+   files with. Use the XXdateXX to insert the date in the format
+   as set by org-journal-date-format."
+  :type 'string :group 'org-journal)
+
 (defcustom org-journal-carryover-delete t
   "Should we delete our todos from the previous file when we
    carryover."
@@ -279,7 +207,7 @@ string if you want to disable timestamps."
 when the current time is before the hour set by `org-extend-today-until`."
   :type 'string :group 'org-journal)
 
-(defcustom org-journal-time-prefix "** "
+(defcustom org-journal-time-prefix ""
   "String that is put before every time entry in a journal file.
   By default, this is an org-mode sub-heading."
   :type 'string :group 'org-journal)
@@ -433,9 +361,9 @@ Whenever a journal entry is created the
               (insert (replace-in-string 
                           "XXdateXX" 
                           (format-time-string org-journal-date-format time) 
-                          (get-string-from-file org-journal-base-file))
-                      org-journal-date-prefix
-                      (format-time-string org-journal-date-format time))))
+                          (get-string-from-file org-journal-base-file)))))
+                      ; org-journal-date-prefix
+                      ; (format-time-string org-journal-date-format time))))
 
 
         ;; add crypt tag if encryption is enabled and tag is not present
@@ -446,9 +374,9 @@ Whenever a journal entry is created the
           (goto-char (point-max)))
 
         ;; move TODOs from previous day here
-        (when (and org-journal-carryover-items
-                   (string= entry-path (org-journal-get-entry-path (current-time))))
-          (save-excursion (org-journal-carryover)))
+        ; (when (and org-journal-carryover-items
+        ;            (string= entry-path (org-journal-get-entry-path (current-time))))
+        (org-journal-carryover)
 
         ;; insert the header of the entry
         (when should-add-entry-p
@@ -466,7 +394,7 @@ Whenever a journal entry is created the
                                   (format-time-string org-journal-time-format)))
                              ;; “time” is on some other day, use blank timestamp
                              (t ""))))
-            (insert "\n" org-journal-time-prefix timestamp))
+            (insert "\n\n~" org-journal-time-prefix timestamp "~\n"))
           (run-hooks 'org-journal-after-entry-create-hook))
 
         ;; switch to the outline, hide subtrees
@@ -481,43 +409,15 @@ Whenever a journal entry is created the
 
 (defun org-journal-carryover ()
   "Moves all items matching org-journal-carryover-items from the
-previous day's file to the current file."
+   previous day's file to the current file."
   (interactive)
-  (save-excursion
-    (org-journal-open-previous-entry)
-    ; (prin1 "TEST")
-    ; (prin1 (buffer-name))
-    (prin1 (org-get-header-tree))
-    ; ("MYTEST"
-    ;      ("TESTING i'm not sure??")
-    ;  "TEST3"
-    ;      ("sssss")
-    ;  "TESET4 HELLOSSSSSS"
-    ;      ("sssssxx"
-    ;          ("noen sssssxx")))
-  )
-  (let ((current-buffer-name (buffer-name))
-        (all-todos))
+    (setq current-buffer-name (buffer-name))
     (save-excursion
-      (let ((org-journal-find-file 'find-file)
-            (delete-mapper
-             (lambda ()
-               (let ((subtree (org-journal-extract-current-subtree org-journal-carryover-delete)))
-                 ;; since the next subtree now starts at point,
-                 ;; continue mapping from before that, to include it
-                 ;; in the search
-                 (backward-char)
-                 (setq org-map-continue-from (point))
-                 subtree))))
-        (org-journal-open-previous-entry)
-        (setq all-todos (org-map-entries delete-mapper
-                                         org-journal-carryover-items))
-        (save-buffer)))
-    (switch-to-buffer current-buffer-name)
-    (when all-todos
-      (unless (eq (current-column) 0) (insert "\n"))
-      (insert "\n")
-      (insert (mapconcat 'identity all-todos "")))))
+      (org-journal-open-previous-entry)
+      (setq parsed_string (shell-command-to-string (concat "python " org-journal-python-file " \"" (buffer-string) "\"")))
+      (switch-to-buffer current-buffer-name))
+   (insert parsed_string)
+  )
 
 (defun org-journal-extract-current-subtree (delete-p)
   "Get the string content of the entire current subtree."
