@@ -374,9 +374,9 @@ Whenever a journal entry is created the
           (goto-char (point-max)))
 
         ;; move TODOs from previous day here
-        ; (when (and org-journal-carryover-items
-        ;            (string= entry-path (org-journal-get-entry-path (current-time))))
-        (org-journal-carryover)
+        (when (and org-journal-carryover-items
+                   (string= entry-path (org-journal-get-entry-path (current-time))))
+          (save-excursion (org-journal-carryover)))
 
         ;; insert the header of the entry
         (when should-add-entry-p
