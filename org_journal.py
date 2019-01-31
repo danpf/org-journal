@@ -462,11 +462,11 @@ def trim_heads(heads):
 
 
 def main():
-    # stdin = sys.argv[1]
-    # with open("test.txt", 'w') as fh:
-    #     fh.write(stdin)
+    stdin = sys.argv[1]
+    with open("test.txt", 'w') as fh:
+        fh.write(stdin)
     # stdin = BUFFER_TEXT
-    stdin = BUFFER_TEXT_2
+    # stdin = BUFFER_TEXT_2
 
     heads = parse_journal_text(stdin)
     final_text = trim_heads(heads)
