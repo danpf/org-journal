@@ -373,10 +373,10 @@ Whenever a journal entry is created the
             (org-set-tags-to org-crypt-tag-matcher))
           (goto-char (point-max)))
 
-        ;; move TODOs from previous day here
-        (when (and org-journal-carryover-items
-                   (string= entry-path (org-journal-get-entry-path (current-time))))
-          (save-excursion (org-journal-carryover)))
+        ;; copy TODOs from previous day here
+        (when (not (file-exists-p (org-journal-get-entry-path (current-time))))
+          ; (insert "this ran")
+          (org-journal-carryover))
 
         ;; insert the header of the entry
         (when should-add-entry-p
