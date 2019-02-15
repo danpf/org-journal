@@ -414,7 +414,12 @@ Whenever a journal entry is created the
     (setq current-buffer-name (buffer-name))
     (save-excursion
       (org-journal-open-previous-entry)
-      (setq parsed_string (shell-command-to-string (concat "python " org-journal-python-file " \"" (buffer-string) "\"")))
+      (print (concat "python " org-journal-python-file " \"" (buffer-string) "\""))
+      (with-temp-file "test.ast" (insert (format "%s" bufpar)))
+      (setq tmp-fn (make-temp-file "orgjournal"))
+      (with-temp-file tmp-fn buffer_string)
+      (setq parsed_string (shell-command-to-string (concat "python " org-journal-python-file " " tmp-fn)))
+      (delete-file tmp-fn)
       (switch-to-buffer current-buffer-name))
    (insert parsed_string)
   )

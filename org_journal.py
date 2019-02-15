@@ -463,12 +463,13 @@ def trim_heads(heads):
 
 def main():
     stdin = sys.argv[1]
-    with open("test.txt", 'w') as fh:
-        fh.write(stdin)
+
+    # with open("test.txt", 'w') as fh:
+    #     fh.write(stdin)
     # stdin = BUFFER_TEXT
     # stdin = BUFFER_TEXT_2
 
-    heads = parse_journal_text(stdin)
+    heads = parse_journal_text(open(stdin).read())
     final_text = trim_heads(heads)
     print(final_text, end='')
 
